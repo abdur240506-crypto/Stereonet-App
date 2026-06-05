@@ -2,3 +2,4 @@ streamlit
 mplstereonet
 matplotlib
 numpy
+obspy
