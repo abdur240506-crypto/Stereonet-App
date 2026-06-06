@@ -10,7 +10,6 @@ Original file is located at
 # app.py — Stereonet Geologi Struktur(langsung kita poyeksi ke arah website)
 # jalanin di terminal: streamlit run app.py
 # Tapi kita kaya harus install dulu: pip install streamlit mplstereonet matplotlib numpy obspy
-!pip install streamlit mplstereonet matplotlib numpy obspy
 
 # library utama streamlit buat bikin tampilannya biar kaya web
 import streamlit as st
