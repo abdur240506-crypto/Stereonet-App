@@ -149,7 +149,6 @@ def mean_angle(angles):
         np.mean(np.sin(r)), np.mean(np.cos(r))
     )) + 360) % 360)
 def angular_diff(a, b):
-    pass
 
 # selisih sudut terkecil antara dua arah artinya kaya hasilnya pasti 0-180
 def angular_diff(a, b):
@@ -158,7 +157,6 @@ def angular_diff(a, b):
     return min(d, 360 - d)
 
 def plane_to_vec(strike, dip):
-    pass
 
 def plane_to_vec(strike, dip):
     # Disini kita ngelakuin konversi bidang geologi (strike/dip) ke vektor 3D
@@ -828,7 +826,7 @@ for s in strikes:
     elif 70 <= a <= 80:  riedel_types.append("R' shear")
     else:                riedel_types.append('Unclassified')
 
-rcount   = Counter(riedel_types)
+rcount= Counter(riedel_types)
 dominant = rcount.most_common(1)[0][0]
 
 m1, m2, m3, m4, m5 = st.columns(5)
@@ -865,7 +863,7 @@ st.markdown("""
 ), unsafe_allow_html=True)
 
 #nah lanjut lagi ke landing page dari lipatan
-if mode.startswith("〰"):
+elif mode.startswith("〰"):
 
     col_input, col_plot = st.columns([1, 2], gap="large")
 
@@ -991,7 +989,7 @@ if mode.startswith("〰"):
     </div>""" % (plunge_class, pA, tight_class, interlimb), unsafe_allow_html=True)
 
 #nah terakhir kita buat landing page dari kekar
-if mode.startswith("💎"):
+elif mode.startswith("💎"):
 
     col_input, col_plot = st.columns([1, 2], gap="large")
 
