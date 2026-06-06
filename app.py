@@ -188,33 +188,98 @@ def vec_to_trend_plunge(v):
     return trend, plunge
 
 
-def classify_fold(plunge):
-    # klasifikasi lipatan dari plunge sumbu lipatannya
-    # referensi: Fleuty (1964) — standar yang dipake di buku2 geologi struktur
-    if plunge < 10:   return "Horizontal fold (< 10°)"
-    elif plunge < 30: return "Gentle plunging fold (10°–30°)"
-    elif plunge < 60: return "Moderate plunging fold (30°–60°)"
-    else:             return "Steeply plunging fold (≥ 60°)"
+def classify_fold_fleuty(plunge, interlimb_angle=None):
+    # klasifikasi lipatan Fleuty (1964) — dua parameter:
+    # 1. plunge sumbu lipatan → posisi sumbu di ruang
+    # 2. interlimb angle (sudut antar dua limb) → tingkat keketatan lipatan
+    #
+    # Klasifikasi orientasi sumbu (dari plunge):
+    # Recumbent       : plunge 0–10°  (hampir rebah)
+    # Subhorizontal   : 0–10° (beberapa referensi samain dengan recumbent)
+    # Gently plunging : 10–30°
+    # Moderately      : 30–60°
+    # Steeply         : 60–80°
+    # Subvertical     : 80–90°
+    if plunge < 10:        plunge_class = "Recumbent / subhorizontal"
+    elif plunge < 30:      plunge_class = "Gently plunging"
+    elif plunge < 60:      plunge_class = "Moderately plunging"
+    elif plunge < 80:      plunge_class = "Steeply plunging"
+    else:                  plunge_class = "Subvertical / upright"
+
+    # Klasifikasi tightness dari interlimb angle (sudut antar limb):
+    # Gentle    : >120°  (lipatan landai, hampir datar)
+    # Open      : 70–120°
+    # Close     : 30–70°
+    # Tight     : 5–30°  (sangat terlipat)
+    # Isoclinal : <5°    (kedua limb hampir paralel)
+    if interlimb_angle is None:
+        tight_class = "interlimb angle tidak diisi"
+    elif interlimb_angle > 120:  tight_class = "Gentle fold (>120°)"
+    elif interlimb_angle > 70:   tight_class = "Open fold (70°–120°)"
+    elif interlimb_angle > 30:   tight_class = "Close fold (30°–70°)"
+    elif interlimb_angle > 5:    tight_class = "Tight fold (5°–30°)"
+    else:                        tight_class = "Isoclinal fold (<5°)"
+
+    return plunge_class, tight_class
 
 
-def classify_fault(dips):
-    # klasifikasi tipe sesar dominan berdasarkan distribusi dip
-    # logikanya: normal fault dip curam (>60°), strike-slip hampir vertikal (<30°),
-    # reverse/thrust dip landai-medium (30–60°)
+def calc_interlimb_angle(fold_left, fold_right):
+    # hitung interlimb angle = sudut antara mean pole kiri dan kanan
+    # kenapa dari pole? karena sudut antar pole = sudut antar bidang
+    # (suplemen dari sudut antar normal = sudut antar limb itu sendiri)
+    def mv(sets):
+        vecs = [plane_to_vec(s['strike'], s['dip']) for s in sets]
+        return normalize(np.mean(vecs, axis=0))
+    mL = mv(fold_left)
+    mR = mv(fold_right)
+    # dot product dua unit vektor = cos(sudut antar keduanya)
+    cos_a = np.clip(np.dot(mL, mR), -1, 1)
+    angle_between_poles = np.degrees(np.arccos(cos_a))
+    # interlimb angle = 180° - sudut antar pole (karena pole tegak lurus bidang)
+    interlimb = 180.0 - angle_between_poles
+    return float(interlimb)
+
+
+def classify_fault_by_rake(rake):
+    # klasifikasi sesar dari rake — ini yang paling akurat
+    # rake = sudut arah slip di permukaan bidang sesar (-180 sampai +180°)
+    #
+    # Referensi: Aki & Richards (2002), Twiss & Moores (2007)
+    # rake  0° atau ±180° = pure strike-slip (gerak horizontal)
+    # rake +90°            = pure reverse / thrust (naik)
+    # rake -90°            = pure normal fault (turun)
+    # zona ±30° dari 0/180 = dominan strike-slip
+    # zona ±30° dari 90   = dominan dip-slip
+    rake_abs = abs(rake)
+    if rake_abs <= 30 or rake_abs >= 150:
+        return "Strike-slip"
+    elif 60 <= rake_abs <= 120 and rake < 0:
+        return "Normal fault"
+    elif 60 <= rake_abs <= 120 and rake > 0:
+        return "Reverse / thrust"
+    else:
+        return "Oblique slip"
+
+
+def classify_fault_by_dip(dips):
+    # fallback klasifikasi kalau pitch semua = 0 (belum diisi manual)
+    # pakai dip rata-rata sebagai proxy — kurang akurat tapi cukup untuk estimasi
+    # catatan: sesar strike-slip bisa dip-nya curam (~90°), makanya ini bisa salah
+    # → selalu lebih baik isi pitch/rake secara manual untuk hasil yang bener
     arr = np.array(dips)
     n   = len(arr)
-    if np.sum(arr > 60) / n > 0.5:                    return "Normal fault dominant"
-    if np.sum(arr < 30) / n > 0.5:                    return "Strike-slip dominant"
-    if np.sum((arr >= 30) & (arr <= 60)) / n > 0.5:   return "Reverse / thrust dominant"
-    return "Oblique slip / mixed"
+    if np.sum(arr > 60) / n > 0.5:                    return "Normal fault dominant*"
+    if np.sum(arr < 30) / n > 0.5:                    return "Strike-slip dominant*"
+    if np.sum((arr >= 30) & (arr <= 60)) / n > 0.5:   return "Reverse / thrust dominant*"
+    return "Oblique slip / mixed*"
+    # tanda * berarti estimasi dari dip, bukan dari rake
 
 
 def estimate_rake(mean_dip, sense):
-    # estimasi rake kalau pengguna ga ngisi pitch secara manual
-    # rake = sudut antara strike dan arah slip di permukaan bidang sesar
-    # dip curam → normal fault → rake negatif (-90°)
-    # dip landai → strike-slip → rake ≈ 0°
-    # dip medium → oblique, tandanya tergantung dextral/sinistral
+    # estimasi rake otomatis kalau pengguna ga ngisi pitch
+    # ini cuma fallback kasar — hasilnya bisa salah seperti kasus di atas
+    # (dip 85° bisa jadi strike-slip kalau rake-nya kecil)
+    # → isi pitch manual kalau mau klasifikasi yang bener
     if mean_dip > 60:   return -90
     elif mean_dip < 30: return 0
     else:               return 30 if 'Dextral' in sense else -30
@@ -698,11 +763,20 @@ if mode.startswith("⚡"):
         dips    = np.array([s['dip']    for s in fs])
         pitches = np.array([s.get('pitch', 0) for s in fs])
 
-        mean_pitch = float(np.mean(pitches))
-        # kalau pitch rata-rata > 0 berarti pengguna ngisi manual, pakai itu
-        # kalau 0 semua, estimasi otomatis dari dip & shear sense
-        rake = int(mean_pitch) if mean_pitch > 0 \
-               else estimate_rake(float(np.mean(dips)), shear_sense)
+        # cek apakah ADA SATUPUN pitch yang diisi (> 0)
+        # bukan rata-rata — karena kalau 5 set pitch=0 dan 1 set pitch=10,
+        # rata-ratanya tetap kecil dan salah masuk ke fallback dip
+        pitched = [s.get('pitch', 0) for s in fs if s.get('pitch', 0) > 0]
+        pitch_diisi = len(pitched) > 0
+
+        if pitch_diisi:
+            # pakai rata-rata dari pitch yang diisi aja (yang 0 di-skip)
+            mean_pitch = float(np.mean(pitched))
+            rake = int(mean_pitch)
+        else:
+            # belum ada pitch sama sekali, estimasi dari dip + shear sense
+            mean_pitch = 0.0
+            rake = estimate_rake(float(np.mean(dips)), shear_sense)
 
         tab1, tab2, tab3, tab4 = st.tabs([
             "Stereonet", "Rose Diagram", "Stress Axes", "Beachball"
@@ -738,7 +812,18 @@ if mode.startswith("⚡"):
     st.divider()
     st.subheader("Hasil Analisis")
 
-    fault_type = classify_fault(list(dips))
+    # klasifikasi sesar — pakai rake kalau pitch sudah diisi, fallback dip kalau belum
+    # tanda * di hasil berarti estimasi dari dip, bukan rake → kurang akurat
+    # pitch_diisi didefinisikan di col_plot di atas, masih valid di scope yang sama
+    if pitch_diisi:
+        fault_type = classify_fault_by_rake(rake)
+        rake_source = "dari pitch manual"
+    else:
+        # fallback: klasifikasi dari dip — bisa salah untuk strike-slip dip curam
+        # contoh: dip 85 + rake 10 = strike-slip, tapi dip doang kelihatan normal fault
+        fault_type = classify_fault_by_dip(list(dips))
+        rake_source = "estimasi dari dip — isi Pitch untuk hasil akurat"
+
     sigma1 = (mean_angle(list(strikes)) + 90) % 360
     sigma3 = (sigma1 + 180) % 360
 
@@ -776,16 +861,21 @@ if mode.startswith("⚡"):
               <div class="metric-value">%s</div>
             </div>""" % (lbl, val), unsafe_allow_html=True)
 
+    # warning kalau pitch belum diisi — kasih tau user supaya hasilnya akurat
+    # contoh kasus: dip 85° tanpa pitch → diklasifikasikan normal fault, padahal bisa strike-slip
+    if not pitch_diisi:
+        st.warning("⚠️ Kolom Pitch belum diisi — klasifikasi pakai estimasi dari dip dan bisa salah. Isi Pitch (rake) di input untuk hasil yang benar.", icon="⚠️")
+
     st.markdown("""
     <div class="info-box">
       <b>Riedel shear zone:</b> %.0f° &nbsp;|&nbsp;
       <b>Struktur dominan:</b> %s &nbsp;|&nbsp;
       <b>Shear sense:</b> %s<br>
-      <b>Beachball input:</b> Strike %d° / Dip %d° / Rake %d°<br>
+      <b>Beachball input:</b> Strike %d° / Dip %d° / Rake %d° (%s)<br>
       <b>Distribusi Riedel:</b> %s
     </div>""" % (
         shear_zone, dominant, shear_sense,
-        int(np.mean(strikes)), int(np.mean(dips)), rake,
+        int(np.mean(strikes)), int(np.mean(dips)), rake, rake_source,
         " · ".join("%s: %d" % (k, v) for k, v in rcount.items())
     ), unsafe_allow_html=True)
 
@@ -873,7 +963,10 @@ elif mode.startswith("〰"):
     st.divider()
     st.subheader("Hasil Analisis Lipatan")
 
-    fold_type = classify_fold(pA)
+    # klasifikasi Fleuty lengkap: orientasi (dari plunge) + tightness (dari interlimb angle)
+    plunge_class, tight_class = classify_fold_fleuty(pA)
+    interlimb = calc_interlimb_angle(fl, fr)
+    _, tight_class = classify_fold_fleuty(pA, interlimb)
 
     def mv_local(sets):
         vecs = [plane_to_vec(s['strike'], s['dip']) for s in sets]
@@ -884,31 +977,37 @@ elif mode.startswith("〰"):
     tL, pL = vec_to_trend_plunge(mL)
     tR, pR = vec_to_trend_plunge(mR)
 
-    m1, m2, m3, m4 = st.columns(4)
+    # 6 metrik: axis trend, plunge, interlimb, orientasi Fleuty, tightness, mean pole
+    m1, m2, m3 = st.columns(3)
+    m4, m5, m6 = st.columns(3)
     for col_m, lbl, val in [
-        (m1, "Fold axis trend",   "%.1f°" % tA),
-        (m2, "Fold axis plunge",  "%.1f°" % pA),
-        (m3, "Mean pole – kiri",  "%.1f° / %.1f°" % (tL, pL)),
-        (m4, "Mean pole – kanan", "%.1f° / %.1f°" % (tR, pR)),
+        (m1, "Fold axis trend",        "%.1f°" % tA),
+        (m2, "Fold axis plunge",       "%.1f°" % pA),
+        (m3, "Interlimb angle",        "%.1f°" % interlimb),
+        (m4, "Orientasi (Fleuty)",     plunge_class),
+        (m5, "Tightness (Fleuty)",     tight_class),
+        (m6, "Mean pole kiri / kanan", "%.0f°/%.0f°  ·  %.0f°/%.0f°" % (tL, pL, tR, pR)),
     ]:
         with col_m:
             st.markdown("""
             <div class="metric-box">
               <div class="metric-label">%s</div>
-              <div class="metric-value">%s</div>
+              <div class="metric-value" style="font-size:15px">%s</div>
             </div>""" % (lbl, val), unsafe_allow_html=True)
 
     st.markdown("""
     <div class="info-box">
-      <b>Tipe lipatan:</b> %s<br>
-      <b>Simbol:</b>
+      <b>Klasifikasi Fleuty (1964):</b><br>
+      &nbsp;&nbsp;Orientasi sumbu: <b>%s</b> (plunge %.1f°)<br>
+      &nbsp;&nbsp;Kekencangan lipatan: <b>%s</b> (interlimb %.1f°)<br>
+      <b>Simbol stereonet:</b>
         Lingkaran (●) = pole data &nbsp;|&nbsp;
         Segitiga (▲) = mean pole per limb &nbsp;|&nbsp;
         Bintang (★) = fold axis<br>
-      <b>Interpretasi:</b>
-        Sumbu lipatan dihitung dari cross product mean pole kedua limb.
-        Plunge <b>%.1f°</b> ke arah <b>%.0f°</b>.
-    </div>""" % (fold_type, pA, tA), unsafe_allow_html=True)
+      <b>Cara baca interlimb angle:</b>
+        sudut antara dua limb — makin kecil makin terlipat ketat.
+        Dihitung dari sudut antar mean pole kedua limb.
+    </div>""" % (plunge_class, pA, tight_class, interlimb), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════
