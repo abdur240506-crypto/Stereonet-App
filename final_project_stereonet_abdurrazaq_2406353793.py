@@ -149,6 +149,7 @@ def mean_angle(angles):
         np.mean(np.sin(r)), np.mean(np.cos(r))
     )) + 360) % 360)
 def angular_diff(a, b):
+pass
 
 # selisih sudut terkecil antara dua arah artinya kaya hasilnya pasti 0-180
 def angular_diff(a, b):
@@ -157,6 +158,7 @@ def angular_diff(a, b):
     return min(d, 360 - d)
 
 def plane_to_vec(strike, dip):
+pass
 
 def plane_to_vec(strike, dip):
     # Disini kita ngelakuin konversi bidang geologi (strike/dip) ke vektor 3D
